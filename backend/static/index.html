@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finance Copilot</title>
+<style>
+:root{--bg:#e9eef1;--surface:#fff;--ink:#14212b;--muted:#5b6b78;--rule:#c9d3da;--accent:#234e9d;--accent-ink:#fff;--good:#1f7a4d;--bad:#a32f2f;--warn:#a85a07;--warn-bg:#fdf1e1;--radius:6px}
+@media (prefers-color-scheme:dark){:root{--bg:#10171d;--surface:#18222a;--ink:#e6edf2;--muted:#93a4b1;--rule:#2b3a45;--accent:#7fa6ee;--accent-ink:#10171d;--good:#5cc28d;--bad:#ef8a8a;--warn:#f0a85a;--warn-bg:#2b2113}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--rule)}
+header h1{margin:0;font-size:18px;font-weight:650;letter-spacing:-.01em}
+main{max-width:1080px;margin:24px auto;padding:0 20px}
+[hidden]{display:none!important}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:var(--radius);padding:7px 14px;cursor:pointer;font-weight:550}
+button.quiet{background:transparent;color:var(--accent);border:1px solid var(--rule)}
+button:disabled{opacity:.5;cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:7px 10px}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:20px}
+.auth{max-width:380px;margin:60px auto}
+.auth h2{margin:0 0 4px}.auth p{margin:0 0 16px;color:var(--muted)}
+.auth label{display:block;margin:10px 0 4px;font-size:13px;color:var(--muted)}
+.auth input{width:100%}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--rule);margin-bottom:16px}
+.tabs button{background:none;color:var(--muted);border-radius:0;border-bottom:2px solid transparent;padding:10px 14px}
+.tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
+.stats{display:flex;gap:20px;flex-wrap:wrap;margin:0 0 16px;color:var(--muted)}
+.stats b{color:var(--ink);font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-weight:600;font-size:13px;color:var(--muted);padding:8px 10px;border-bottom:3px double var(--rule)}
+td{padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.out{color:var(--bad)}.in{color:var(--good)}
+.tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;border:1px solid var(--rule);color:var(--muted)}
+.tag.warn{color:var(--warn);background:var(--warn-bg);border-color:transparent}
+.scroll{overflow-x:auto}.muted{color:var(--muted)}.err{color:var(--bad);min-height:1.4em}
+#chat .msg{margin:12px 0;max-width:70ch}#chat .q{font-weight:600}
+details{margin-top:4px;color:var(--muted)}pre{white-space:pre-wrap;background:var(--bg);padding:8px;border-radius:var(--radius);font-size:13px}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--radius)}
+</style>
+</head>
+<body>
+<header><h1>Finance Copilot</h1><div class="row" id="who" hidden><span class="muted" id="email"></span><button class="quiet" id="logout">Sign out</button></div></header>
+
+<main id="auth-view">
+  <section class="panel auth">
+    <h2 id="auth-title">Sign in</h2>
+    <p>Your ledger, categorized and checked for anything unusual.</p>
+    <form id="auth-form">
+      <label for="a-email">Email</label><input id="a-email" type="email" required autocomplete="username">
+      <label for="a-pass">Password (8 characters or more)</label><input id="a-pass" type="password" minlength="8" required autocomplete="current-password">
+      <p class="err" id="auth-err" role="alert"></p>
+      <div class="row"><button type="submit" id="auth-submit">Sign in</button><button type="button" class="quiet" id="auth-toggle">Create an account</button></div>
+    </form>
+  </section>
+</main>
+
+<main id="app-view" hidden>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="txns" aria-selected="true">Transactions</button>
+    <button role="tab" data-tab="review" aria-selected="false">Needs review</button>
+    <button role="tab" data-tab="flags" aria-selected="false">Flags</button>
+    <button role="tab" data-tab="ask" aria-selected="false">Ask a question</button>
+    <button role="tab" data-tab="runs" aria-selected="false">Agent log</button>
+  </div>
+
+  <section id="tab-txns" class="panel">
+    <div class="row" style="margin-bottom:14px">
+      <input type="file" id="file" accept=".csv">
+      <button id="upload">Upload statement</button>
+      <button class="quiet" id="run">Categorize and check</button>
+    </div>
+    <p class="stats" id="stats"></p>
+    <div class="scroll" id="txns"></div>
+  </section>
+  <section id="tab-review" class="panel" hidden><div class="scroll" id="review"></div></section>
+  <section id="tab-flags" class="panel" hidden><div class="scroll" id="flags"></div></section>
+  <section id="tab-ask" class="panel" hidden>
+    <div id="chat"><p class="muted">Try: How much did we spend on software last month?</p></div>
+    <div class="row"><input id="q" style="flex:1;min-width:220px" placeholder="Ask about your spending" maxlength="500"><button id="ask">Ask</button></div>
+  </section>
+  <section id="tab-runs" class="panel" hidden><div class="scroll" id="runs"></div></section>
+</main>
+<div id="toast" role="status" hidden></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let token = sessionStorage.getItem("token"), registering = false, accounts = [];
+
+async function api(path, opts = {}) {
+  const headers = {...(opts.headers || {})};
+  if (token) headers.Authorization = "Bearer " + token;
+  const res = await fetch(path, {...opts, headers});
+  if (res.status === 401 && token) { logout(); throw new Error("Session expired. Sign in again."); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Request failed (" + res.status + ")");
+  return data;
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 4500); }
+
+/* auth */
+$("auth-toggle").onclick = () => {
+  registering = !registering;
+  $("auth-title").textContent = registering ? "Create an account" : "Sign in";
+  $("auth-submit").textContent = registering ? "Create account" : "Sign in";
+  $("auth-toggle").textContent = registering ? "I have an account" : "Create an account";
+};
+$("auth-form").onsubmit = async (e) => {
+  e.preventDefault(); $("auth-err").textContent = "";
+  const email = $("a-email").value, password = $("a-pass").value;
+  try {
+    const out = registering
+      ? await api("/auth/register", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email, password})})
+      : await api("/auth/login", {method: "POST", body: new URLSearchParams({username: email, password})});
+    token = out.access_token; sessionStorage.setItem("token", token); sessionStorage.setItem("email", email);
+    start();
+  } catch (err) { $("auth-err").textContent = err.message; }
+};
+function logout() { token = null; sessionStorage.clear(); $("app-view").hidden = true; $("who").hidden = true; $("auth-view").hidden = false; }
+$("logout").onclick = logout;
+
+/* tabs */
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-selected", x === b));
+  ["txns","review","flags","ask","runs"].forEach((t) => $("tab-" + t).hidden = t !== b.dataset.tab);
+  refresh();
+});
+
+/* helpers */
+const amountOf = (t) => t.lines.reduce((s, l) => s + Number(l.debit), 0);
+const catLine = (t) => t.lines.find((l) => ["expense","income"].includes(l.account.type));
+const money = (n) => n.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const statusLabel = {pending: "Waiting", categorized: "Categorized", needs_review: "Needs review"};
+
+function txnTable(list, flagsByTxn, withEdit) {
+  if (!list.length) return '<p class="empty">Nothing here yet.</p>';
+  const rows = list.map((t) => {
+    const line = catLine(t), income = line && line.account.type === "income", amt = amountOf(t);
+    const fl = (flagsByTxn[t.id] || []).filter((f) => f.status !== "dismissed").map((f) => `<span class="tag warn" title="${esc(f.reason)}">${esc(f.rule)}</span>`).join(" ");
+    let cat = esc(line ? line.account.name : "—");
+    if (withEdit && line) {
+      const opts = accounts.filter((a) => a.type === line.account.type && !a.name.startsWith("Uncategorized"))
+        .map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("");
+      cat = `<select data-id="${t.id}" aria-label="Category for transaction ${t.id}"><option value="">Choose…</option>${opts}</select> <button class="quiet" data-save="${t.id}">Save</button>`;
+    }
+    return `<tr><td class="num">${esc(t.txn_date)}</td><td>${esc(t.description)} ${fl}</td><td>${cat}</td>
+      <td class="num ${income ? "in" : "out"}">${income ? "+" : "−"}${money(amt)}</td><td><span class="tag">${statusLabel[t.status] || t.status}</span></td></tr>`;
+  }).join("");
+  return `<table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function refresh() {
+  const tab = document.querySelector(".tabs [aria-selected=true]").dataset.tab;
+  try {
+    if (tab === "txns" || tab === "review") {
+      const [txns, flags, st] = await Promise.all([api("/transactions?limit=500"), api("/flags"), api("/pipeline/status")]);
+      const byTxn = {}; flags.forEach((f) => (byTxn[f.transaction_id] ||= []).push(f));
+      const c = st.transactions;
+      $("stats").innerHTML = `<span><b>${c.categorized}</b> categorized</span><span><b>${c.needs_review}</b> need review</span><span><b>${c.pending}</b> waiting</span><span><b>${st.open_flags}</b> open flags</span>`;
+      $("txns").innerHTML = txnTable(txns, byTxn, false);
+      if (tab === "review") {
+        accounts = await api("/accounts");
+        const queue = txns.filter((t) => t.status === "needs_review");
+        $("review").innerHTML = queue.length ? txnTable(queue, byTxn, true) : '<p class="empty">Nothing needs review. Upload a statement and run the check to fill this list.</p>';
+      }
+    } else if (tab === "flags") {
+      const flags = await api("/flags");
+      $("flags").innerHTML = flags.length ? `<table><thead><tr><th>Transaction</th><th>Why it was flagged</th><th>Second opinion</th><th>Status</th><th></th></tr></thead><tbody>${flags.map((f) =>
+        `<tr><td>${esc(f.description)}<br><span class="tag warn">${esc(f.rule)}</span></td><td>${esc(f.reason)}</td>
+        <td>${f.llm_verdict ? esc(f.llm_verdict) + ": " + esc(f.llm_reasoning) : '<span class="muted">Rules only</span>'}</td>
+        <td><span class="tag">${esc(f.status)}</span></td>
+        <td class="row"><button class="quiet" data-flag="${f.id}" data-to="confirmed">Confirm</button><button class="quiet" data-flag="${f.id}" data-to="dismissed">Dismiss</button></td></tr>`).join("")}</tbody></table>`
+        : '<p class="empty">No flags. Run the check after uploading a statement.</p>';
+    } else if (tab === "runs") {
+      const runs = await api("/agent-runs");
+      $("runs").innerHTML = runs.length ? `<table><thead><tr><th>Agent</th><th>Result</th><th class="num">Tries</th><th class="num">Time (ms)</th><th class="num">Tokens in/out</th><th>Input</th></tr></thead><tbody>${runs.map((r) =>
+        `<tr><td>${esc(r.agent)}</td><td><span class="tag">${esc(r.status)}</span>${r.error ? "<br><span class='muted'>" + esc(r.error) + "</span>" : ""}</td><td class="num">${r.attempts}</td><td class="num">${r.latency_ms}</td><td class="num">${r.input_tokens}/${r.output_tokens}</td><td>${esc(r.input_text)}</td></tr>`).join("")}</tbody></table>`
+        : '<p class="empty">No agent runs yet.</p>';
+    }
+  } catch (err) { toast(err.message); }
+}
+
+/* actions */
+$("upload").onclick = async () => {
+  const f = $("file").files[0]; if (!f) return toast("Choose a CSV file first.");
+  const body = new FormData(); body.append("file", f);
+  try {
+    const r = await api("/ingest/csv", {method: "POST", body});
+    toast(`Added ${r.inserted} transactions` + (r.failed.length ? `. ${r.failed.length} row(s) skipped: row ${r.failed[0].row} ${r.failed[0].error}` : ""));
+    refresh();
+  } catch (err) { toast(err.message); }
+};
+$("run").onclick = async () => {
+  $("run").disabled = true; toast("Working. This takes a few seconds for new vendors.");
+  try {
+    const r = await api("/pipeline/run", {method: "POST"});
+    toast(`Done: ${r.categorized} categorized, ${r.cache_hits} from earlier decisions, ${r.needs_review} need review, ${r.flags_created} new flags`);
+    refresh();
+  } catch (err) { toast(err.message); } finally { $("run").disabled = false; }
+};
+document.addEventListener("click", async (e) => {
+  const save = e.target.dataset.save, flag = e.target.dataset.flag;
+  try {
+    if (save) {
+      const val = document.querySelector(`select[data-id="${save}"]`).value; if (!val) return toast("Choose a category first.");
+      await api(`/transactions/${save}/category`, {method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify({account_id: Number(val)})});
+      refresh();
+    } else if (flag) {
+      await api(`/flags/${flag}`, {method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: e.target.dataset.to})});
+      refresh();
+    }
+  } catch (err) { toast(err.message); }
+});
+async function ask() {
+  const q = $("q").value.trim(); if (q.length < 3) return;
+  const chat = $("chat"); if (chat.querySelector("p.muted")) chat.innerHTML = "";
+  chat.insertAdjacentHTML("beforeend", `<div class="msg q">${esc(q)}</div>`); $("q").value = ""; $("ask").disabled = true;
+  try {
+    const r = await api("/query", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({question: q})});
+    chat.insertAdjacentHTML("beforeend", `<div class="msg">${esc(r.answer)}${r.sql.length ? `<details><summary>Show the SQL</summary><pre>${esc(r.sql.join("\n\n"))}</pre></details>` : ""}</div>`);
+  } catch (err) { chat.insertAdjacentHTML("beforeend", `<div class="msg err">${esc(err.message)}</div>`); }
+  finally { $("ask").disabled = false; }
+}
+$("ask").onclick = ask; $("q").onkeydown = (e) => { if (e.key === "Enter") ask(); };
+
+function start() {
+  $("auth-view").hidden = true; $("app-view").hidden = false; $("who").hidden = false;
+  $("email").textContent = sessionStorage.getItem("email") || ""; refresh();
+}
+if (token) start();
+</script>
+</body>
+</html>
