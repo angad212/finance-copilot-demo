@@ -1,4 +1,9 @@
+import inspect
 from types import SimpleNamespace
+
+from anthropic.resources.messages import AsyncMessages
+
+_REAL_SIGNATURE = inspect.signature(AsyncMessages.create)
 
 
 def text_response(text):
@@ -28,6 +33,7 @@ class FakeLLM:
         self.messages = self  # so client.messages.create(...) lands on create()
 
     async def create(self, **kwargs):
+        _REAL_SIGNATURE.bind(None, **kwargs)  # fails like the real SDK if we pass an unsupported argument
         self.calls.append(kwargs)
         item = self.fn(kwargs) if self.fn else self.replies.pop(0)
         if isinstance(item, Exception):

@@ -75,13 +75,12 @@ async def structured_call(
                 lambda: client.messages.create(
                     model=settings.llm_model,
                     max_tokens=max_tokens,
-                    temperature=0,
                     system=system,
                     messages=messages,
                 )
             )
         except Exception as e:  # network down, auth failure, etc.
-            result.error = f"LLM request failed: {type(e).__name__}"
+            result.error = f"LLM request failed: {type(e).__name__}: {str(e)[:200]}"
             return result
 
         usage = getattr(response, "usage", None)

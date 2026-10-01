@@ -58,7 +58,7 @@ async def answer_question(llm, user_id: int, question: str) -> dict:
 
     for _ in range(MAX_TURNS):
         response = await with_backoff(lambda: llm.messages.create(
-            model=settings.llm_model, max_tokens=600, temperature=0,
+            model=settings.llm_model, max_tokens=600, 
             system=SYSTEM.format(today=date.today().isoformat()),
             tools=TOOLS, messages=messages,
         ))
